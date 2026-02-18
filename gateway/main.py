@@ -17,7 +17,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
-
 # ==============================
 # 1️⃣ UPLOAD CSV → POST /jobs
 # ==============================
@@ -36,6 +35,7 @@ async def create_job(file: UploadFile = File(...), session: Session = Depends(ge
         f.write(await file.read())
 
     return {"job_id": job.id}
+
 
 # ==============================
 # BATCH WORKER
@@ -126,3 +126,55 @@ def start_job(job_id:int, bg:BackgroundTasks, session: Session = Depends(get_ses
     bg.add_task(process_job, job_id)
 
     return {"message":"started"}
+
+# ==============================
+# 3️⃣ JOB STATUS → GET /jobs/{id}
+# ==============================
+
+@app.get("/jobs/{job_id}")
+def job_status(job_id:int, session:Session=Depends(get_session)):
+
+    job = session.get(Job, job_id)
+
+    percent = 0
+    if job.total_records:
+        percent = int(job.processed_records/job.total_records*100)
+
+    return {
+        "id":job.id,
+        "status":job.status,
+        "total_records":job.total_records,
+        "processed_records":job.processed_records,
+        "valid_records":job.valid_records,
+        "invalid_records":job.invalid_records,
+        "progress_percent":percent
+    }
+
+
+# ==============================
+# 4️⃣ VIEW RESULTS → GET /jobs/{id}/transactions
+# ==============================
+
+@app.get("/jobs/{job_id}/transactions")
+def transactions(
+        job_id:int,
+        page:int=1,
+        size:int=20,
+        filter:str=None,
+        session:Session=Depends(get_session)
+):
+
+    q = select(Transaction).where(Transaction.job_id==job_id)
+
+    if filter=="valid":
+        q=q.where(Transaction.is_valid==True)
+
+    if filter=="invalid":
+        q=q.where(Transaction.is_valid==False)
+
+    if filter=="suspicious":
+        q=q.where(Transaction.is_suspicious==True)
+
+    rows=session.exec(q.offset((page-1)*size).limit(size)).all()
+
+    return rows
