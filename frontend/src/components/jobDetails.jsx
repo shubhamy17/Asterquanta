@@ -51,7 +51,7 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
         }));
 
         setTransactions(transformedTxns);
-        
+
         // Set total count based on filter
         if (filter === "all") {
           setTotalCount(jobStatus.total_records || 0);
@@ -200,9 +200,9 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
               Transactions
             </h2>
             <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded text-xs font-bold text-indigo-600">
-              {totalCount > 0 
+              {totalCount > 0
                 ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`
-                : '0 results'}
+                : "0 results"}
             </div>
           </div>
 
@@ -233,7 +233,7 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto" style={{ maxHeight: '500px' }}>
+        <div className="flex-1 overflow-auto" style={{ maxHeight: "500px" }}>
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
@@ -287,9 +287,11 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
                       key={pageNum}
                       onClick={() => handlePageChange(pageNum)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all
-                        ${currentPage === pageNum 
-                          ? 'bg-indigo-600 text-white' 
-                          : 'hover:bg-white border border-slate-200 text-slate-700'}`}
+                        ${
+                          currentPage === pageNum
+                            ? "bg-indigo-600 text-white"
+                            : "hover:bg-white border border-slate-200 text-slate-700"
+                        }`}
                     >
                       {pageNum}
                     </button>
