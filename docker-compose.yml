@@ -21,6 +21,39 @@ services:
     networks:
       - app-network
 
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    container_name: temporal_server
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_SEEDS=db
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.26.2
+    container_name: temporal_ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - temporal
+    networks:
+      - app-network
+
   # Backend Service (FastAPI)
   backend:
     build:
@@ -29,17 +62,50 @@ services:
     container_name: fullstack_backend
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/fullstack_db}
+      - TEMPORAL_HOST=temporal:7233
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      temporal:
+        condition: service_started
     volumes:
       - ./gateway/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/docs || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - app-network
 
-  # Frontend Service (React + Vite)
+  # Temporal Worker Service
+  worker:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: fullstack_worker
+    command: ["python", "worker.py"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/fullstack_db}
+      - TEMPORAL_HOST=temporal:7233
+      - FASTAPI_URL=http://backend:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      temporal:
+        condition: service_started
+    volumes:
+      - ./gateway/uploads:/app/uploads
+    restart: on-failure
+    networks:
+      - app-network
+
+  # Frontend Service (React + Nginx)
   frontend:
     build:
       context: ./frontend
@@ -48,7 +114,8 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     networks:
       - app-network
 

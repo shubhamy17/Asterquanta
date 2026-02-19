@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Layout } from "./layout";
 import { UploadView } from "./uploadView";
 import { JobDashboard } from "./jobDashboard";
-import { JobDetails } from "./JobDetails";
+import { JobDetails } from "./jobDetails";
 import {
   ArrowLeft,
   User as UserIcon,
