@@ -8,6 +8,8 @@ import {
   XCircle,
   Info,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { TransactionList } from "./TransactionList";
 import { getJobStatus, getJobTransactions } from "../services/api";
@@ -18,19 +20,23 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
   const [job, setJob] = useState(initialJob);
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
         // Fetch job status to get latest stats
         const jobStatus = await getJobStatus(job.id);
         setJob(jobStatus);
 
-        // Fetch all transactions (you can add pagination later)
+        // Fetch transactions with pagination
         const txns = await getJobTransactions(
           job.id,
-          1,
-          1000,
+          currentPage,
+          pageSize,
           filter === "all" ? null : filter,
         );
 
@@ -45,6 +51,17 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
         }));
 
         setTransactions(transformedTxns);
+        
+        // Set total count based on filter
+        if (filter === "all") {
+          setTotalCount(jobStatus.total_records || 0);
+        } else if (filter === "valid") {
+          setTotalCount(jobStatus.valid_records || 0);
+        } else if (filter === "suspicious") {
+          setTotalCount(jobStatus.suspicious_records || 0);
+        } else if (filter === "invalid") {
+          setTotalCount(jobStatus.invalid_records || 0);
+        }
       } catch (error) {
         console.error("Failed to fetch job details:", error);
       } finally {
@@ -69,8 +86,8 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
         if (jobStatus.status !== "RUNNING") {
           const txns = await getJobTransactions(
             job.id,
-            1,
-            1000,
+            currentPage,
+            pageSize,
             filter === "all" ? null : filter,
           );
           const transformedTxns = txns.map((t) => ({
@@ -90,7 +107,24 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
     }, 3000); // Poll every 3 seconds only while RUNNING
 
     return () => clearInterval(interval);
-  }, [job.id, filter]);
+  }, [job.id, filter, currentPage, pageSize]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  // Pagination handlers
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(Number(newSize));
+    setCurrentPage(1); // Reset to first page when changing page size
+  };
+
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   const stats = [
     {
@@ -166,7 +200,9 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
               Transactions
             </h2>
             <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded text-xs font-bold text-indigo-600">
-              {filteredTransactions.length} results
+              {totalCount > 0 
+                ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`
+                : '0 results'}
             </div>
           </div>
 
@@ -197,7 +233,7 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" style={{ maxHeight: '500px' }}>
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
@@ -206,6 +242,71 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
             <TransactionList transactions={filteredTransactions} />
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {!isLoading && totalCount > 0 && (
+          <div className="border-t border-slate-100 p-4 bg-slate-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-600">Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(e.target.value)}
+                className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg hover:bg-white border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all
+                        ${currentPage === pageNum 
+                          ? 'bg-indigo-600 text-white' 
+                          : 'hover:bg-white border border-slate-200 text-slate-700'}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg hover:bg-white border border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
