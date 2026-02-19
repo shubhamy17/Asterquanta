@@ -1,36 +1,97 @@
 from fastapi import FastAPI, UploadFile, File, Depends, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, select
-from database import engine, get_session
-from models import Job, Transaction
+from sqlalchemy import desc
+from database import engine, get_session, create_db_and_tables
+from models import Job, Transaction, User
 from sqlmodel import Session
+from pydantic import BaseModel, EmailStr
 import pandas as pd
 import os
 from datetime import datetime
 
 app = FastAPI()
 
-SQLModel.metadata.create_all(engine)
+# CORS Configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Pydantic models for request/response
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+
 @app.on_event("startup")
 def on_startup():
-    SQLModel.metadata.create_all(engine)
+    create_db_and_tables()
+
+# ==============================
+# USER ENDPOINTS
+# ==============================
+
+@app.post("/users")
+def create_user(user_data: UserCreate, session: Session = Depends(get_session)):
+    # Check if email already exists
+    existing_user = session.exec(select(User).where(User.email == user_data.email)).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    user = User(name=user_data.name, email=user_data.email)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+@app.get("/users")
+def get_all_users(session: Session = Depends(get_session)):
+    # Use ORM query with ordering
+    users = session.exec(select(User).order_by(desc(User.created_at))).all()
+    return users
+
+@app.get("/users/{user_id}")
+def get_user(user_id: int, session: Session = Depends(get_session)):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.get("/users/{user_id}/jobs")
+def get_user_jobs(user_id: int, session: Session = Depends(get_session)):
+    # Use ORM relationship instead of query builder
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Access jobs through relationship and sort in Python
+    return sorted(user.jobs, key=lambda j: j.created_at, reverse=True)
+
 # ==============================
 # 1️⃣ UPLOAD CSV → POST /jobs
 # ==============================
 
 @app.post("/jobs")
-async def create_job(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def create_job(user_id: int, file: UploadFile = File(...), session: Session = Depends(get_session)):
+    # Use ORM to get user
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    job = Job(status="uploaded")
+    # Create job using ORM
+    job = Job(user_id=user_id, status="UPLOADED")
     session.add(job)
     session.commit()
     session.refresh(job)
 
+    # Save file
     path = f"{UPLOAD_DIR}/job_{job.id}.csv"
-
     with open(path, "wb") as f:
         f.write(await file.read())
 
@@ -47,10 +108,10 @@ def process_job(job_id: int):
 
         job = session.get(Job, job_id)
 
-        if job.status == "running":
+        if job.status == "RUNNING":
             return
 
-        job.status = "running"
+        job.status = "RUNNING"
         session.commit()
 
         df = pd.read_csv(f"uploads/job_{job_id}.csv")
@@ -101,10 +162,13 @@ def process_job(job_id: int):
                     job.valid_records += 1
                 else:
                     job.invalid_records += 1
+                
+                if suspicious:
+                    job.suspicious_records += 1
 
             session.commit()   # commit per batch (REQUIRED)
 
-        job.status = "completed"
+        job.status = "COMPLETED"
         session.commit()
 
 
@@ -120,7 +184,7 @@ def start_job(job_id:int, bg:BackgroundTasks, session: Session = Depends(get_ses
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job.status == "running":
+    if job.status == "RUNNING":
         raise HTTPException(status_code=400, detail="Already running")
 
     bg.add_task(process_job, job_id)
@@ -147,7 +211,9 @@ def job_status(job_id:int, session:Session=Depends(get_session)):
         "processed_records":job.processed_records,
         "valid_records":job.valid_records,
         "invalid_records":job.invalid_records,
-        "progress_percent":percent
+        "suspicious_records":job.suspicious_records,
+        "progress_percent":percent,
+        "created_at":job.created_at
     }
 
 

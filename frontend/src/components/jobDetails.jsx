@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Filter,
@@ -7,46 +7,124 @@ import {
   CheckCircle,
   XCircle,
   Info,
+  Loader2,
 } from "lucide-react";
 import { TransactionList } from "./TransactionList";
+import { getJobStatus, getJobTransactions } from "../services/api";
 
-export const JobDetails = ({ job, onBack }) => {
+export const JobDetails = ({ job: initialJob, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [job, setJob] = useState(initialJob);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch job status to get latest stats
+        const jobStatus = await getJobStatus(job.id);
+        setJob(jobStatus);
+
+        // Fetch all transactions (you can add pagination later)
+        const txns = await getJobTransactions(
+          job.id,
+          1,
+          1000,
+          filter === "all" ? null : filter,
+        );
+
+        // Transform transactions to add status field
+        const transformedTxns = txns.map((t) => ({
+          ...t,
+          status: !t.is_valid
+            ? "invalid"
+            : t.is_suspicious
+              ? "suspicious"
+              : "valid",
+        }));
+
+        setTransactions(transformedTxns);
+      } catch (error) {
+        console.error("Failed to fetch job details:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Only poll while job is RUNNING
+    if (job.status !== "RUNNING") {
+      return; // No polling needed for completed/failed jobs
+    }
+
+    // Poll for updates while job is running
+    const interval = setInterval(async () => {
+      try {
+        const jobStatus = await getJobStatus(job.id);
+        setJob(jobStatus);
+
+        // If job completed, fetch final transactions and stop polling
+        if (jobStatus.status !== "RUNNING") {
+          const txns = await getJobTransactions(
+            job.id,
+            1,
+            1000,
+            filter === "all" ? null : filter,
+          );
+          const transformedTxns = txns.map((t) => ({
+            ...t,
+            status: !t.is_valid
+              ? "invalid"
+              : t.is_suspicious
+                ? "suspicious"
+                : "valid",
+          }));
+          setTransactions(transformedTxns);
+          clearInterval(interval);
+        }
+      } catch (error) {
+        console.error("Failed to poll job status:", error);
+      }
+    }, 3000); // Poll every 3 seconds only while RUNNING
+
+    return () => clearInterval(interval);
+  }, [job.id, filter]);
 
   const stats = [
     {
       label: "Total Records",
-      value: job.total_records,
+      value: job.total_records || 0,
       icon: <Info className="w-4 h-4" />,
       color: "bg-slate-100 text-slate-700",
     },
     {
       label: "Valid",
-      value: job.valid_records,
+      value: job.valid_records || 0,
       icon: <CheckCircle className="w-4 h-4" />,
       color: "bg-emerald-100 text-emerald-700",
     },
     {
       label: "Suspicious",
-      value: job.suspicious_records,
+      value: job.suspicious_records || 0,
       icon: <ShieldAlert className="w-4 h-4" />,
       color: "bg-amber-100 text-amber-700",
     },
     {
       label: "Invalid",
-      value: job.invalid_records,
+      value: job.invalid_records || 0,
       icon: <XCircle className="w-4 h-4" />,
       color: "bg-red-100 text-red-700",
     },
   ];
 
-  const filteredTransactions = job.transactions.filter((t) => {
-    const matchesFilter = filter === "all" || t.status === filter;
-    const matchesSearch =
-      t.transaction_id.toLowerCase().includes(search.toLowerCase()) ||
-      t.user_id.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
+  const filteredTransactions = transactions.filter((t) => {
+    if (!search) return true;
+    return (
+      t.transaction_id?.toLowerCase().includes(search.toLowerCase()) ||
+      t.user_id?.toLowerCase().includes(search.toLowerCase())
+    );
   });
 
   return (
@@ -120,7 +198,13 @@ export const JobDetails = ({ job, onBack }) => {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <TransactionList transactions={filteredTransactions} />
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            </div>
+          ) : (
+            <TransactionList transactions={filteredTransactions} />
+          )}
         </div>
       </div>
     </div>

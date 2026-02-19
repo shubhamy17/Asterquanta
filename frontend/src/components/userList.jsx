@@ -9,7 +9,7 @@ import {
   User as UserIcon,
   Loader2,
 } from "lucide-react";
-// import { mockApiService } from "../services/api";
+import { getAllUsers, createUser } from "../services/api";
 
 export const UserList = () => {
   const [users, setUsers] = useState([]);
@@ -17,13 +17,20 @@ export const UserList = () => {
   const [email, setEmail] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchUsers = async () => {
-      //   const allUsers = await mockApiService.getAllUsers();
-      setUsers([]);
-      setIsLoading(false);
+      try {
+        const allUsers = await getAllUsers();
+        setUsers(allUsers);
+      } catch (error) {
+        console.error("Failed to fetch users:", error);
+        setError("Failed to load users");
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchUsers();
   }, []);
@@ -33,12 +40,13 @@ export const UserList = () => {
     if (!name || !email) return;
 
     setIsCreating(true);
+    setError("");
     try {
-      //   const newUser = await mockApiService.createUser(name, email);
-      //   navigate(`/${newUser.id}`);
-      navigate(`/123`); // Temporary navigation for testing without API
+      const newUser = await createUser(name, email);
+      navigate(`/${newUser.id}`);
     } catch (error) {
       console.error("Failed to create user:", error);
+      setError(error.response?.data?.detail || "Failed to create user");
     } finally {
       setIsCreating(false);
     }
@@ -116,6 +124,12 @@ export const UserList = () => {
                 </div>
               </div>
             </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"

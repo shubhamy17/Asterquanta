@@ -7,7 +7,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-// import { mockApiService } from "../services/api";
+import { uploadFile, startJob } from "../services/api";
 
 export const UploadView = ({ userId, onJobCreated }) => {
   const [file, setFile] = useState(null);
@@ -37,12 +37,17 @@ export const UploadView = ({ userId, onJobCreated }) => {
     setError(null);
 
     try {
-      console.log("userId", onJobCreated, userId);
-      //   const job = await mockApiService.createJob(file, userId);
-      //   onJobCreated(job);
+      const response = await uploadFile(userId, file);
+      const jobId = response.job_id;
+
+      // Automatically start the job
+      await startJob(jobId);
+
+      // Notify parent component
+      onJobCreated({ id: jobId, status: "RUNNING" });
       setFile(null);
     } catch (err) {
-      setError(err?.message || "Upload failed");
+      setError(err.response?.data?.detail || err?.message || "Upload failed");
     } finally {
       setIsUploading(false);
     }

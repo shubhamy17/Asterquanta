@@ -75,8 +75,8 @@ export const JobDashboard = ({ jobs, onSelectJob }) => {
                   className="hover:bg-slate-50 transition-colors group"
                 >
                   <td className="px-6 py-4">
-                    <span className="font-mono text-xs text-slate-500 truncate block w-24">
-                      #{job.id.substring(0, 8)}...
+                    <span className="font-mono text-xs text-slate-500">
+                      #{job.id}
                     </span>
                   </td>
                   <td className="px-6 py-4">

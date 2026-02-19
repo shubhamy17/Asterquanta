@@ -5,6 +5,7 @@ import { UploadView } from "./uploadView";
 import { JobDashboard } from "./jobDashboard";
 import { JobDetails } from "./JobDetails";
 import { ArrowLeft, User as UserIcon, Loader2 } from "lucide-react";
+import { getUserById, getUserJobs } from "../services/api";
 
 export const UserDashboard = () => {
   const { userId } = useParams();
@@ -18,29 +19,43 @@ export const UserDashboard = () => {
     if (!userId) return;
 
     const fetchData = async () => {
-      //   const userData = await mockApiService.getUserById(userId);
-      //   if (!userData) {
-      //     navigate('/');
-      //     return;
-      //   }
-      setUser({});
-      //   const userJobs = await mockApiService.getAllJobs(userId);
-      //   setJobs(userJobs);
-      setIsLoading(false);
+      try {
+        const userData = await getUserById(userId);
+        setUser(userData);
+        const userJobs = await getUserJobs(userId);
+        setJobs(userJobs);
+      } catch (error) {
+        console.error("Failed to fetch user data:", error);
+        navigate("/");
+        return;
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     fetchData();
 
-    // Polling simulation for live updates
+    // Only poll if there are RUNNING jobs
     const interval = setInterval(async () => {
-      //   const userJobs = await mockApiService.getAllJobs(userId);
-      //   setJobs(prevJobs => {
-      //     if (JSON.stringify(prevJobs) !== JSON.stringify(userJobs)) {
-      //       return userJobs;
-      //     }
-      //     return prevJobs;
-      //   });
-    }, 2000);
+      try {
+        const userJobs = await getUserJobs(userId);
+        const hasRunningJobs = userJobs.some((j) => j.status === "RUNNING");
+
+        setJobs((prevJobs) => {
+          if (JSON.stringify(prevJobs) !== JSON.stringify(userJobs)) {
+            return userJobs;
+          }
+          return prevJobs;
+        });
+
+        // Stop polling if no jobs are running
+        if (!hasRunningJobs) {
+          clearInterval(interval);
+        }
+      } catch (error) {
+        console.error("Failed to poll for job updates:", error);
+      }
+    }, 5000); // Poll every 5 seconds instead of 2
 
     return () => clearInterval(interval);
   }, [userId, navigate]);
@@ -95,7 +110,7 @@ export const UserDashboard = () => {
                 Account ID:
               </span>
               <span className="text-xs font-mono text-slate-600">
-                {/* {user?.id.substring(0, 8)}... */}
+                #{user?.id}
               </span>
             </div>
           </div>
