@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database for App + Temporal
   db:
     image: postgres:15-alpine
     container_name: fullstack_db
@@ -11,6 +11,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-fullstack_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-temporal-db.sql:/docker-entrypoint-initdb.d/init-temporal-db.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -21,7 +22,7 @@ services:
     networks:
       - app-network
 
-  # Temporal Server
+  # Temporal Server with PostgreSQL
   temporal:
     image: temporalio/auto-setup:1.24.2
     container_name: temporal_server
@@ -31,7 +32,6 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_SEEDS=db
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     ports:
       - "7233:7233"
     depends_on:
@@ -96,7 +96,7 @@ services:
       db:
         condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
       temporal:
         condition: service_started
     volumes:
