@@ -24,6 +24,13 @@ export const JobDetails = ({ job: initialJob, onBack }) => {
   const [pageSize, setPageSize] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
 
+  // Sync job state with prop updates (from WebSocket in parent)
+  useEffect(() => {
+    if (initialJob) {
+      setJob(initialJob);
+    }
+  }, [initialJob]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
