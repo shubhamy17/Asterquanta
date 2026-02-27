@@ -25,7 +25,31 @@ TASK_QUEUE = "job-processing-queue"
 # Global Temporal client (initialized at startup)
 temporal_client: TemporalClient = None
 
-app = FastAPI()
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown events"""
+    global temporal_client
+    create_db_and_tables()
+    
+    # Connect to Temporal server
+    try:
+        temporal_client = await TemporalClient.connect(TEMPORAL_HOST)
+        print(f"Connected to Temporal server at {TEMPORAL_HOST}")
+    except Exception as e:
+        print(f"Warning: Could not connect to Temporal server: {e}")
+        print("Job processing will fall back to BackgroundTasks")
+    
+    yield  # App runs here
+    
+    # Shutdown logic (if needed)
+    print("Shutting down...")
+
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS Configuration
 app.add_middleware(
@@ -35,9 +59,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Pydantic models for request/response
 class UserCreate(BaseModel):
@@ -57,19 +78,6 @@ class ProgressBroadcast(BaseModel):
     suspicious_records: int
     batch_completed: int
     total_batches: int
-
-@app.on_event("startup")
-async def on_startup():
-    global temporal_client
-    create_db_and_tables()
-    
-    # Connect to Temporal server
-    try:
-        temporal_client = await TemporalClient.connect(TEMPORAL_HOST)
-        print(f"Connected to Temporal server at {TEMPORAL_HOST}")
-    except Exception as e:
-        print(f"Warning: Could not connect to Temporal server: {e}")
-        print("Job processing will fall back to BackgroundTasks")
 
 # ==============================
 # USER ENDPOINTS
